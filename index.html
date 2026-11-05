@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flow</title>
+<style>
+:root{--bg:#0b1a24;--card:#12303f;--card-on:#1b4a60;--fg:#eef7fb;--muted:#9fc3d3;color-scheme:dark}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;
+  padding-block:24px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));box-sizing:border-box}
+h1{margin:0;font-size:clamp(36px,10vw,64px);letter-spacing:.02em}
+.games{display:flex;flex-wrap:wrap;gap:20px;justify-content:center}
+a.game{width:min(42vw,200px);aspect-ratio:1;border-radius:32px;background:var(--card);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:10px;color:var(--fg);text-decoration:none;font-size:18px}
+a.game span{font-size:min(20vw,96px);line-height:1}
+a.game:hover,a.game:focus-visible{background:var(--card-on);outline:3px solid var(--fg);outline-offset:3px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Flow</h1>
+  <div class="games">
+    <a class="game" href="car-wash.html" aria-label="Car wash"><span>🚗</span>Car wash</a>
+  </div>
+</main>
+</body>
+</html>
