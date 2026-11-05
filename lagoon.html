@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lagoon</title>
+<style>
+/* One full-screen canvas looking straight down into shallow water. Single bright daytime look. */
+:root{--bg:#5fc9c9;--btn:rgba(0,45,55,.32);--fg:#ffffff;--ring:#ffffff;color-scheme:light}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;background:var(--bg);overflow:hidden;touch-action:none;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+.sm{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));width:50px;height:50px;border-radius:16px;border:none;
+  background:var(--btn);color:var(--fg);font:24px/1 system-ui,sans-serif;display:grid;place-items:center;text-decoration:none;cursor:pointer}
+#home{left:calc(10px + env(safe-area-inset-left,0px))}
+#snd{right:calc(10px + env(safe-area-inset-right,0px))}
+.sm:focus-visible{outline:3px solid var(--ring);outline-offset:3px}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Clear lagoon water. Touch it to make ripples."></canvas>
+<a class="sm" id="home" href="index.html" aria-label="Back to Flow">🏠</a>
+<button class="sm" id="snd" aria-label="Sound on or off">🔊</button>
+
+<script>
+(()=>{
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const sim=document.createElement('canvas'),sctx=sim.getContext('2d');
+const bed=document.createElement('canvas'),bctx=bed.getContext('2d',{willReadFrequently:true});
+const sand=document.createElement('canvas'),nctx=sand.getContext('2d');
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+
+const DAMP=0.986, REF=1.3;
+let W,H,DPR,SC,sw,sh,cur,prev,dep,img,out32,fish=[],leaves=[],time=0;
+
+/* ---------- setup ---------- */
+function setup(){
+  DPR=Math.min(2,window.devicePixelRatio||1);W=innerWidth;H=innerHeight;
+  cv.width=Math.round(W*DPR);cv.height=Math.round(H*DPR);ctx.setTransform(DPR,0,0,DPR,0,0);
+  SC=Math.max(1.6,Math.sqrt(W*H/110000));
+  sw=Math.ceil(W/SC)+2;sh=Math.ceil(H/SC)+2;
+  for(const c of [sim,bed,sand]){c.width=sw;c.height=sh;}
+  cur=new Float32Array(sw*sh);prev=new Float32Array(sw*sh);dep=new Float32Array(sw*sh);
+  for(let y=0;y<sh;y++)for(let x=0;x<sw;x++)
+    dep[y*sw+x]=clamp(0.15+(1-y/sh)*0.6+Math.sin(x*0.02+1)*0.08+Math.sin(y*0.03+x*0.01)*0.06,0,1);
+  img=sctx.createImageData(sw,sh);out32=new Uint32Array(img.data.buffer);
+  makeSand();
+  fish=[];const nf=clamp(Math.round(sw*sh/9000),3,7);for(let i=0;i<nf;i++)fish.push(newFish(i));
+  leaves=[];const nl=clamp(Math.round(sw*sh/12000),3,7);for(let i=0;i<nl;i++)leaves.push(newLeaf(i));
+}
+let rt=null;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(setup,150);});
+
+/* ---------- the sandy bottom ---------- */
+function makeSand(){
+  const d=nctx.createImageData(sw,sh),p=d.data;
+  for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){
+    const rip=Math.sin(x*0.16+Math.sin(y*0.05)*2.5+y*0.05)*0.5+0.5;
+    const patch=Math.sin(x*0.013+1)*Math.sin(y*0.017)*10;
+    const b=rip*12+(Math.random()-0.5)*12+patch,k=(y*sw+x)*4;
+    p[k]=240+b;p[k+1]=212+b*0.95;p[k+2]=150+b*0.8;p[k+3]=255;
+  }
+  nctx.putImageData(d,0,0);
+  const n=Math.round(sw*sh/6000)+4;
+  for(let i=0;i<n;i++){
+    const x=rnd(6,sw-6),y=rnd(6,sh-6),t=Math.random();
+    nctx.save();nctx.translate(x,y);nctx.rotate(rnd(0,6.28));
+    if(t<0.3)shell();else if(t<0.65)pebble();else if(t<0.8)starfish();else weed();
+    nctx.restore();
+  }
+}
+function shell(){
+  const s=rnd(4,7),c=nctx;
+  c.fillStyle=['#f7cfc6','#fbe7d6','#f2b8b0'][Math.random()*3|0];
+  c.beginPath();c.moveTo(0,s*0.5);c.arc(0,s*0.5,s,Math.PI*1.15,Math.PI*1.85);c.closePath();c.fill();
+  c.strokeStyle='rgba(150,90,80,.45)';c.lineWidth=0.6;
+  for(let k=-2;k<=2;k++){c.beginPath();c.moveTo(0,s*0.5);c.lineTo(Math.sin(k*0.28)*s,s*0.5-Math.cos(k*0.28)*s);c.stroke();}
+}
+function pebble(){
+  const s=rnd(2,5),g=rnd(120,175),c=nctx;
+  c.fillStyle=`rgb(${g},${g-6},${g-14})`;c.beginPath();c.ellipse(0,0,s,s*rnd(0.6,0.9),0,0,7);c.fill();
+  c.fillStyle='rgba(255,255,255,.25)';c.beginPath();c.ellipse(-s*0.3,-s*0.3,s*0.4,s*0.25,0,0,7);c.fill();
+}
+function starfish(){
+  const r=rnd(5,8),c=nctx;c.fillStyle=['#f08a3c','#e8654a','#f4a640'][Math.random()*3|0];
+  c.beginPath();for(let k=0;k<10;k++){const a=k*Math.PI/5,rr=k%2?r*0.4:r;c.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);}c.closePath();c.fill();
+  c.fillStyle='rgba(255,255,255,.35)';for(let k=0;k<5;k++){const a=k*Math.PI*2/5;c.beginPath();c.arc(Math.cos(a)*r*0.5,Math.sin(a)*r*0.5,0.6,0,7);c.fill();}
+}
+function weed(){
+  const c=nctx;c.strokeStyle='rgba(80,130,70,.7)';c.lineWidth=1.2;c.lineCap='round';
+  for(let k=0;k<4;k++){c.beginPath();c.moveTo(0,0);c.quadraticCurveTo(rnd(-6,6),rnd(-6,-3),rnd(-8,8),rnd(-12,-7));c.stroke();}
+}
+
+/* ---------- fish ---------- */
+const FISHC=[['#ff8a3d','#fff3e6'],['#ffd23f','#fff9db'],['#4aa3ff','#e6f3ff'],['#ff6fa8','#ffe6f0']];
+function newFish(i){return {x:rnd(20,sw-20),y:rnd(20,sh-20),a:rnd(0,6.28),sp:rnd(7,13),fl:0,t:rnd(0,9),ph:0,c:FISHC[i%FISHC.length],len:rnd(9,13)};}
+function angDiff(a,b){let d=a-b;while(d>Math.PI)d-=6.283;while(d<-Math.PI)d+=6.283;return d;}
+function updateFish(dt){
+  for(const f of fish){
+    f.t+=dt;f.fl=Math.max(0,f.fl-dt*0.9);
+    f.a+=Math.sin(f.t*0.6+f.len)*0.7*dt;
+    const m=18;
+    if(f.x<m||f.x>sw-m||f.y<m||f.y>sh-m)f.a+=angDiff(Math.atan2(sh/2-f.y,sw/2-f.x),f.a)*dt*2.5;
+    const sp=f.sp+f.fl*f.fl*75;
+    f.x+=Math.cos(f.a)*sp*dt;f.y+=Math.sin(f.a)*sp*dt;
+    f.x=clamp(f.x,2,sw-2);f.y=clamp(f.y,2,sh-2);
+    f.ph+=dt*(7+f.fl*25);
+  }
+}
+function scare(x,y){
+  for(const f of fish){const d=Math.hypot(f.x-x,f.y-y);if(d<45){f.fl=1;f.a=Math.atan2(f.y-y,f.x-x)+rnd(-0.4,0.4);}}
+}
+function drawFish(c){
+  for(const f of fish){
+    const L=f.len,w=L*0.38,wag=Math.sin(f.ph)*0.35;
+    c.save();c.translate(f.x+3,f.y+4);c.rotate(f.a);
+    c.fillStyle='rgba(70,50,20,.16)';c.beginPath();c.ellipse(0,0,L*0.55,w*0.7,0,0,7);c.fill();
+    c.restore();
+    c.save();c.translate(f.x,f.y);c.rotate(f.a);
+    c.fillStyle=f.c[0];
+    c.save();c.translate(-L*0.45,0);c.rotate(wag);
+    c.beginPath();c.moveTo(0,0);c.lineTo(-L*0.4,-w*0.9);c.lineTo(-L*0.4,w*0.9);c.closePath();c.fill();c.restore();
+    c.beginPath();c.ellipse(0,0,L*0.5,w,0,0,7);c.fill();
+    c.fillStyle=f.c[1];c.fillRect(-L*0.08,-w,L*0.12,w*2);
+    c.fillStyle='#1b1b1b';c.beginPath();c.arc(L*0.28,-w*0.25,0.9,0,7);c.fill();
+    c.restore();
+  }
+}
+
+/* ---------- floating leaves and flowers ---------- */
+function newLeaf(i){return {x:rnd(20,sw-20),y:rnd(20,sh-20),vx:0,vy:0,r:rnd(0,6.28),vr:rnd(-0.15,0.15),kind:i%3===0?'flower':'leaf',s:rnd(9,13)};}
+function updateLeaves(dt){
+  for(const l of leaves){
+    const xi=clamp(l.x|0,1,sw-2),yi=clamp(l.y|0,1,sh-2),i=yi*sw+xi;
+    const gx=cur[i-1]-cur[i+1],gy=cur[i-sw]-cur[i+sw];
+    l.vx+=gx*55*dt+Math.sin(time*0.13+l.s)*0.6*dt;l.vy+=gy*55*dt+Math.cos(time*0.11+l.s)*0.6*dt;
+    l.vx*=Math.pow(0.35,dt);l.vy*=Math.pow(0.35,dt);
+    l.x+=l.vx*dt;l.y+=l.vy*dt;l.r+=(l.vr+(Math.abs(l.vx)+Math.abs(l.vy))*0.01)*dt;
+    const m=l.s*0.6;
+    if(l.x<m){l.x=m;l.vx=Math.abs(l.vx)*0.5;}if(l.x>sw-m){l.x=sw-m;l.vx=-Math.abs(l.vx)*0.5;}
+    if(l.y<m){l.y=m;l.vy=Math.abs(l.vy)*0.5;}if(l.y>sh-m){l.y=sh-m;l.vy=-Math.abs(l.vy)*0.5;}
+  }
+}
+function drawLeaves(){
+  for(const l of leaves){
+    const xi=clamp(l.x|0,1,sw-2),yi=clamp(l.y|0,1,sh-2),h=cur[yi*sw+xi];
+    const X=(l.x-1)*SC,Y=(l.y-1)*SC,s=l.s*SC*clamp(1+h*0.015,0.9,1.12);
+    ctx.save();ctx.translate(X+s*0.35,Y+s*0.45);ctx.rotate(l.r);
+    ctx.fillStyle='rgba(20,60,70,.18)';
+    if(l.kind==='leaf')leafPath(s);else{ctx.beginPath();ctx.arc(0,0,s*0.75,0,7);}
+    ctx.fill();ctx.restore();
+    ctx.save();ctx.translate(X,Y);ctx.rotate(l.r);
+    if(l.kind==='leaf'){
+      const g=ctx.createLinearGradient(-s,0,s,0);g.addColorStop(0,'#3f9a45');g.addColorStop(1,'#8fd16a');
+      ctx.fillStyle=g;leafPath(s);ctx.fill();
+      ctx.strokeStyle='rgba(30,80,30,.5)';ctx.lineWidth=Math.max(1,s*0.06);
+      ctx.beginPath();ctx.moveTo(-s*0.95,0);ctx.lineTo(s*0.85,0);ctx.stroke();
+    }else{
+      for(let k=0;k<5;k++){
+        ctx.save();ctx.rotate(k*Math.PI*2/5);
+        const g=ctx.createLinearGradient(0,0,s*0.75,0);g.addColorStop(0,'#ffd54a');g.addColorStop(0.45,'#fff8ec');g.addColorStop(1,'#ffffff');
+        ctx.fillStyle=g;ctx.beginPath();ctx.ellipse(s*0.4,0,s*0.42,s*0.24,0.35,0,7);ctx.fill();ctx.restore();
+      }
+      ctx.fillStyle='#f7b733';ctx.beginPath();ctx.arc(0,0,s*0.12,0,7);ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+function leafPath(s){ctx.beginPath();ctx.moveTo(-s,0);ctx.quadraticCurveTo(0,-s*0.6,s,0);ctx.quadraticCurveTo(0,s*0.6,-s,0);ctx.closePath();}
+
+/* ---------- water ---------- */
+function disturb(x,y,r,amp){
+  const r2=r*r;
+  for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+    const d2=dx*dx+dy*dy;if(d2>r2)continue;
+    const xi=(x+dx)|0,yi=(y+dy)|0;if(xi<1||yi<1||xi>=sw-1||yi>=sh-1)continue;
+    cur[yi*sw+xi]+=amp*(1-Math.sqrt(d2)/(r+0.001));
+  }
+}
+function step(){
+  for(let y=1;y<sh-1;y++){
+    let i=y*sw+1;
+    for(let x=1;x<sw-1;x++,i++)prev[i]=((cur[i-1]+cur[i+1]+cur[i-sw]+cur[i+sw])*0.5-prev[i])*DAMP;
+  }
+  const t=cur;cur=prev;prev=t;
+}
+function render(){
+  bctx.drawImage(sand,0,0);drawFish(bctx);
+  const bd=bctx.getImageData(0,0,sw,sh).data;
+  for(let y=1;y<sh-1;y++){
+    let i=y*sw+1;
+    for(let x=1;x<sw-1;x++,i++){
+      const l=cur[i-1],r=cur[i+1],u=cur[i-sw],d=cur[i+sw];
+      const dx=l-r,dy=u-d;
+      const sx=clamp(x+((dx*REF)|0),0,sw-1),sy=clamp(y+((dy*REF)|0),0,sh-1);
+      const j=(sy*sw+sx)*4,dp=dep[i];
+      const caus=-(l+r+u+d-4*cur[i])*0.09;
+      let lt=1+(dx-dy)*0.045+caus;lt=lt<0.65?0.65:lt>1.6?1.6:lt;
+      const sl=dx-dy,spec=sl>2.5?Math.min(55,(sl-2.5)*9):0;
+      let R=bd[j]*(0.9-0.3*dp)*lt+spec,G=(bd[j+1]*(0.95-0.08*dp)+10)*lt+spec,B=(bd[j+2]*0.82+28+45*dp)*lt+spec;
+      R=R>255?255:R;G=G>255?255:G;B=B>255?255:B;
+      out32[i]=(255<<24)|((B|0)<<16)|((G|0)<<8)|(R|0);
+    }
+  }
+  sctx.putImageData(img,0,0);
+  ctx.imageSmoothingEnabled=true;
+  ctx.drawImage(sim,1,1,sw-2,sh-2,0,0,(sw-2)*SC,(sh-2)*SC);
+}
+
+/* ---------- sound ---------- */
+let A=null,muted=false,swish=0;
+function initAudio(){
+  if(A){if(A.ac.state==='suspended')A.ac.resume();return;}
+  try{
+    const ac=new (window.AudioContext||window.webkitAudioContext)();
+    const master=ac.createGain();master.gain.value=muted?0:0.6;master.connect(ac.destination);
+    const len=ac.sampleRate*2,white=ac.createBuffer(1,len,ac.sampleRate),brown=ac.createBuffer(1,len,ac.sampleRate);
+    const w=white.getChannelData(0),b=brown.getChannelData(0);let last=0;
+    for(let i=0;i<len;i++){const v=Math.random()*2-1;w[i]=v*0.5;last=(last+0.02*v)/1.02;b[i]=last*3.5;}
+    const loop=buf=>{const s=ac.createBufferSource();s.buffer=buf;s.loop=true;s.start(0,Math.random());return s;};
+    // gentle lapping water
+    const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=480;
+    const amb=ac.createGain();amb.gain.value=0;amb.gain.setTargetAtTime(0.16,ac.currentTime,1.5);
+    const am=ac.createGain();am.gain.value=0.55;const lfo=ac.createOscillator();lfo.frequency.value=0.13;
+    const ld=ac.createGain();ld.gain.value=0.45;lfo.connect(ld);ld.connect(am.gain);lfo.start();
+    loop(brown).connect(lp);lp.connect(amb);amb.connect(am);am.connect(master);
+    // swishing when a finger moves through the water
+    const bp=ac.createBiquadFilter();bp.type='bandpass';bp.frequency.value=900;bp.Q.value=0.8;
+    const sg=ac.createGain();sg.gain.value=0;loop(brown).connect(bp);bp.connect(sg);sg.connect(master);
+    A={ac,master,sg};
+  }catch(e){A=null;}
+}
+function plop(){
+  if(!A)return;const ac=A.ac,t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain(),f0=rnd(480,760);
+  o.type='sine';o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(f0*0.42,t+0.14);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(0.16,t+0.012);g.gain.setTargetAtTime(0,t+0.04,0.05);
+  o.connect(g);g.connect(A.master);o.start(t);o.stop(t+0.5);
+}
+const sndBtn=document.getElementById('snd');
+sndBtn.addEventListener('click',()=>{muted=!muted;sndBtn.textContent=muted?'🔇':'🔊';
+  if(A)A.master.gain.setTargetAtTime(muted?0:0.6,A.ac.currentTime,0.1);});
+document.addEventListener('visibilitychange',()=>{if(A)document.hidden?A.ac.suspend():A.ac.resume();});
+
+/* ---------- touch ---------- */
+const ptrs=new Map();
+const toSim=(x,y)=>[x/SC+1,y/SC+1];
+cv.addEventListener('pointerdown',e=>{
+  initAudio();
+  const [x,y]=toSim(e.clientX,e.clientY);
+  ptrs.set(e.pointerId,{x,y,t:performance.now()});
+  disturb(x,y,5,9);scare(x,y);plop();
+  try{cv.setPointerCapture(e.pointerId);}catch(_){}
+});
+cv.addEventListener('pointermove',e=>{
+  const p=ptrs.get(e.pointerId);if(!p)return;
+  const [x,y]=toSim(e.clientX,e.clientY),dist=Math.hypot(x-p.x,y-p.y);
+  const n=Math.max(1,Math.ceil(dist/2));
+  for(let k=1;k<=n;k++)disturb(p.x+(x-p.x)*k/n,p.y+(y-p.y)*k/n,3,1.4);
+  const now=performance.now(),dt=Math.max(1,now-p.t);
+  swish=Math.max(swish,dist*SC/dt);
+  if(dist>0.5)scare(x,y);
+  p.x=x;p.y=y;p.t=now;
+});
+const end=e=>ptrs.delete(e.pointerId);
+cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end);
+
+/* ---------- loop ---------- */
+let last=performance.now(),breeze=0;
+function frame(now){
+  const dt=Math.min(0.05,(now-last)/1000);last=now;time+=dt;
+  breeze+=dt;while(breeze>0.12){breeze-=0.12;disturb(rnd(2,sw-2),rnd(2,sh-2),2,0.5);}
+  step();updateFish(dt);updateLeaves(dt);
+  render();drawLeaves();
+  swish*=Math.pow(0.02,dt);
+  if(A)A.sg.gain.setTargetAtTime(Math.min(0.22,swish*0.09),A.ac.currentTime,0.06);
+  requestAnimationFrame(frame);
+}
+setup();
+// a few gentle ripples so the water looks alive straight away
+for(let k=0;k<3;k++)disturb(rnd(sw*0.2,sw*0.8),rnd(sh*0.2,sh*0.8),5,7);
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

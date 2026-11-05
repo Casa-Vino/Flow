@@ -26,6 +26,8 @@ button:focus-visible{outline:3px solid var(--ring);outline-offset:3px}
 #top{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:calc(10px + env(safe-area-inset-right,0px));display:flex;gap:8px}
 .sm{width:50px;height:50px;border-radius:16px;border:3px solid transparent;background:rgba(0,0,0,.45);font-size:24px;display:grid;place-items:center}
 .sm.on{border-color:var(--ring)}
+a.sm{color:var(--fg);text-decoration:none}
+#home{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:calc(10px + env(safe-area-inset-left,0px))}
 .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
 .big{pointer-events:auto;width:min(40vw,190px);aspect-ratio:1;max-width:100%;border-radius:50%;border:none;
   background:var(--go);box-shadow:0 0 0 12px var(--go-glow);font-size:min(16vw,84px);display:grid;place-items:center;
@@ -39,6 +41,7 @@ button:focus-visible{outline:3px solid var(--ring);outline-offset:3px}
 
 <canvas id="c" aria-label="View from inside a car going through a car wash"></canvas>
 
+<a class="sm" id="home" href="index.html" aria-label="Back to Flow">🏠</a>
 <div id="top">
   <button class="sm" id="stay" aria-label="Stay on this part" title="Stay on this part">🔁</button>
   <button class="sm" id="snd" aria-label="Sound on or off" title="Sound">🔊</button>
